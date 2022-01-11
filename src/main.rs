@@ -3,17 +3,17 @@
 
 use core::panic::PanicInfo;
 
+mod vga_buffer;
+
+use crate::vga_buffer::print_something;
+
+
 static HELLO: &[u8] = b"Hello world";
+static PRINTING_STATIC: &[u8] = b"This is static text and no other functions";
 
 #[no_mangle]// don't mangle the name of this function, as it`s our entry point
 pub extern "C" fn _start() -> ! {
-    let vga_buffer = 0xb8000 as *mut u8;
-    for (i, &byte) in HELLO.iter().enumerate() {
-        unsafe {
-            *vga_buffer.offset(i as isize * 2) = byte;
-            *vga_buffer.offset(i as isize * 2 + 1) = 0xb;
-        }
-    }
+    print_something();
     loop {}
 }
 
