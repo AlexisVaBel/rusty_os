@@ -1,6 +1,6 @@
 use volatile::Volatile;
 use core::fmt;
-use core::fmt::Write;
+
 
 impl fmt::Write for Writer {
     fn write_str(&mut self, s: &str) -> fmt::Result {
@@ -111,12 +111,11 @@ impl Writer {
             color_code: self.color_code,
         };
         for col in 0..BUFFER_WIDTH {
-            let character = self.buffer.chars[row][col].read();
             self.buffer.chars[row][col].write(blank);
         }
     }
 
-    fn fill_background(&mut self) {
+    pub fn fill_background(&mut self) {
         let blank = ScreenChar {
             ascii_character: b' ',
             color_code: self.color_code,
@@ -129,26 +128,39 @@ impl Writer {
     }
 }
 
-pub static WRITER: Writer = Writer {
-    column_position: 0,
-    color_code: ColorCode::new(Color::Yellow, Color::Green),
-    buffer: unsafe { &mut *(0xb8000 as *mut Buffer) },
-};
+use lazy_static::lazy_static;
+use spin::Mutex;
 
-pub fn print_something() {
-    let mut writer = Writer {
+// it`s immutable, so we cannot write to it
+// while all methods take &mut self - static mut is discouraged, because can introduce data races
+
+lazy_static! {
+    pub static ref WRITER: Mutex<Writer> = Mutex::new(Writer {
         column_position: 0,
         color_code: ColorCode::new(Color::Yellow, Color::Green),
         buffer: unsafe { &mut *(0xb8000 as *mut Buffer) },
-    };
+    });
+}
 
-    writer.fill_background();
-    writer.write_byte(b'H');
-    writer.write_string("ello ");
-    writer.write_string("Wörld!");
-    writer.write_byte(b'\n');
+//#[macro_export] attribute to both macros to make them available everywhere in our crate
+// Note that this places the macros in the root namespace of the crate
+// so importing them via use crate::vga_buffer::println does not work. Instead, we have to do use crate::println
+#[macro_export]
+macro_rules! print {
+    ($($arg:tt)*) => ($crate::vga_buffer::_print(format_args!($($arg)*)));
+}
 
-    write!(writer, "The numbers are {} and {}", 42, 1.0 / 3.0).unwrap();
-    writer.write_byte(b'\n');
-    writer.write_string("It works!");
+// used macro with $crate,
+// This ensures that we don't need to have to import the print! macro too if we only want to use println.
+#[macro_export]
+macro_rules! println {
+    () => ($crate::print!("\n"));
+    ($($arg:tt)*) => ($crate::print!("{}\n",format_args!($($arg)*)));
+}
+
+//to hide it from the generated documentation.
+#[doc(hidden)]
+pub fn _print(args: fmt::Arguments) {
+    use core::fmt::Write;
+    WRITER.lock().write_fmt(args).unwrap();
 }
